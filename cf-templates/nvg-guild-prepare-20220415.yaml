@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Prepare for NVG Guild"
+
+Resources:
+  NvgGuildS3LambdaConvertToPdfRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+  
+  NvgGuildS3LambdaConvertToPdfPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: "NvgGuild_S3LambdaConvertToPdfPolicy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action:
+              - "logs:PutRetentionPolicy"
+              - "logs:DeleteRetentionPolicy"
+              - "logs:CreateLogGroup"
+              - "logs:PutLogEvents"
+              - "logs:CreateLogStream"
+            Resource: "*"
+          - Effect: "Allow"
+            Action:
+              - "s3:*"
+            Resource: "*"
+          - Effect: "Allow"
+            Resource: "*"
+            Action:
+              - "dynamodb:BatchGetItem"
+              - "dynamodb:BatchWriteItem"
+              - "dynamodb:DeleteItem"
+              - "dynamodb:DescribeTable"
+              - "dynamodb:GetItem"
+              - "dynamodb:ListTables"
+              - "dynamodb:PutItem"
+              - "dynamodb:Query"
+              - "dynamodb:UpdateItem"
+          - Effect: Allow
+            Action:
+              - "sqs:ReceiveMessage"
+              - "sqs:DeleteMessage"
+              - "sqs:GetQueueAttributes"
+              - "sqs:ChangeMessageVisibility"
+            Resource: "*"
+      Roles:
+        - !Ref NvgGuildS3LambdaConvertToPdfRole

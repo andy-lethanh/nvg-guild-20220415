@@ -1,0 +1,55 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.1.32328.378
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "S3Lambda", "S3Lambda", "{B97DB3F3-A9F4-4F6E-8855-ECBF3C5B0A70}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "S3LambdaDemo", "S3Lambda\S3LambdaDemo\S3LambdaDemo.csproj", "{7CFF791B-1E13-436B-B9DC-6E708CA8C08E}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "S3PreSignedURL", "S3PreSignedURL", "{6A4A5A2B-A793-443D-8B30-09305A8A6AAF}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "S3PresignedUrl", "S3PresignedUrl\S3PresignedUrl.csproj", "{42DBCDA3-E8FF-43CC-B015-942F6E816588}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "APIGatewayAuthenticationLambda", "APIGatewayAuthenticationLambda", "{6802424B-D226-42C3-955C-A1AA02CE0CA2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "APIGatewayAuthorizerFunction", "APIGatewayAuthenticationLambda\APIGatewayAuthorizerFunction\src\APIGatewayAuthorizerFunction\APIGatewayAuthorizerFunction.csproj", "{D5C09AA9-6100-4B93-986F-628CC711EF78}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "APIGatewayLambdaGreeting", "APIGatewayAuthenticationLambda\APIGatewayLambdaGreeting\src\APIGatewayLambdaGreeting\APIGatewayLambdaGreeting.csproj", "{982F3F1D-B7F9-43B6-A2DD-7492F1AA92C0}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7CFF791B-1E13-436B-B9DC-6E708CA8C08E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7CFF791B-1E13-436B-B9DC-6E708CA8C08E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7CFF791B-1E13-436B-B9DC-6E708CA8C08E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7CFF791B-1E13-436B-B9DC-6E708CA8C08E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{42DBCDA3-E8FF-43CC-B015-942F6E816588}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{42DBCDA3-E8FF-43CC-B015-942F6E816588}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{42DBCDA3-E8FF-43CC-B015-942F6E816588}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{42DBCDA3-E8FF-43CC-B015-942F6E816588}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D5C09AA9-6100-4B93-986F-628CC711EF78}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D5C09AA9-6100-4B93-986F-628CC711EF78}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D5C09AA9-6100-4B93-986F-628CC711EF78}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D5C09AA9-6100-4B93-986F-628CC711EF78}.Release|Any CPU.Build.0 = Release|Any CPU
+		{982F3F1D-B7F9-43B6-A2DD-7492F1AA92C0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{982F3F1D-B7F9-43B6-A2DD-7492F1AA92C0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{982F3F1D-B7F9-43B6-A2DD-7492F1AA92C0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{982F3F1D-B7F9-43B6-A2DD-7492F1AA92C0}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{7CFF791B-1E13-436B-B9DC-6E708CA8C08E} = {B97DB3F3-A9F4-4F6E-8855-ECBF3C5B0A70}
+		{42DBCDA3-E8FF-43CC-B015-942F6E816588} = {6A4A5A2B-A793-443D-8B30-09305A8A6AAF}
+		{D5C09AA9-6100-4B93-986F-628CC711EF78} = {6802424B-D226-42C3-955C-A1AA02CE0CA2}
+		{982F3F1D-B7F9-43B6-A2DD-7492F1AA92C0} = {6802424B-D226-42C3-955C-A1AA02CE0CA2}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C367EE78-177C-43DB-A4C7-69FC605A43CD}
+	EndGlobalSection
+EndGlobal
