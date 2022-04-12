@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net6.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>SimpleApp.Me.Application</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Adl.ModelBinding" Version="1.2.0" />
+      <PackageReference Include="AWSSDK.DynamoDBv2" Version="3.7.2.20" />
+      <PackageReference Include="MediatR" Version="10.0.1" />
+      <PackageReference Include="Microsoft.AspNetCore.Http" Version="2.2.2" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\Shared\SimpleApp.Avatar.Shared\SimpleApp.Avatar.Shared.csproj" />
+      <ProjectReference Include="..\SimpleApp.Me.Domain\SimpleApp.Me.Domain.csproj" />
+    </ItemGroup>
+
+</Project>

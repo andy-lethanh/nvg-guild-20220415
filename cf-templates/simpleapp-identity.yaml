@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Build Cognito User Pool"
+Parameters:
+  PoolName:
+    Type: String
+    Default: "simpleapp-user-pool"
+  PoolDomainName:
+    Type: String
+    Default: "simpleapp-identity"
+Resources:
+  SimpleAppUserPool:
+    Type: "AWS::Cognito::UserPool"
+    Properties:
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: "verified_email"
+            Priority: 1
+          - Name: "verified_phone_number"
+            Priority: 2
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      AutoVerifiedAttributes:
+        - "email"
+      UsernameAttributes:
+        - "email"
+      UsernameConfiguration:
+        CaseSensitive: false
+      UserPoolName: !Ref PoolName
+
+  SimpleAppPoolDomain:
+    Type: "AWS::Cognito::UserPoolDomain"
+    Properties:
+      UserPoolId: !Ref SimpleAppUserPool
+      Domain: !Ref PoolDomainName
+
+Outputs:
+  UserPoolUrl:
+    Value: !GetAtt SimpleAppUserPool.ProviderURL
+    Description: "User pool url"
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolUrl"
+
+  UserPoolDomain:
+    Value: !Ref SimpleAppPoolDomain
+    Description: "User pool domain"
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolDomain"
+

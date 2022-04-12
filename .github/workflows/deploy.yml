@@ -1,0 +1,139 @@
+name: Go
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      manually:
+        description: "Manually trigger"
+        required: true
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REPOSITORY: simpleapp-me
+  IMAGE_TAG: ${{ github.sha }}
+  FUNCTION_ZIP_FILE_NAME: "SimpleApp.AvatarResize.zip"
+  S3_LAMBDA_SOURCECODE_BUCKET: "simpleapp-devops"
+  S3_LAMBDA_OBJECT_KEY: "lambda/sourcecode/simpleapp-avatar-resize/${{ github.sha }}/$FUNCTION_ZIP_FILE_NAME"
+
+jobs:
+  deploy-storage-network:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: aws-actions/configure-aws-credentials@v1
+        name: Configure AWS
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - run: |
+          aws cloudformation deploy \
+            --template-file "./cf-templates/simpleapp-identity.yaml" \
+            --stack-name simpleapp-identity
+
+      - run: |
+          aws cloudformation deploy \
+            --template-file "./cf-templates/simpleapp-storage.yaml" \
+            --stack-name simpleapp-storage
+
+      - run: |
+          aws cloudformation deploy \
+            --template-file "./cf-templates/simpleapp-network.yaml" \
+            --stack-name simpleapp-network
+
+  build-docker-image:
+    runs-on: ubuntu-latest
+    needs: [ deploy-storage-network ]
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: aws-actions/configure-aws-credentials@v1
+        name: Configure AWS
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -f ./ImageProcessingApp/Me/SimpleApp.Me.WebApi/Dockerfile ./ImageProcessingApp
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+  upload-lambda-zip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - uses: aws-actions/configure-aws-credentials@v1
+        name: Configure AWS
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-dotnet@v1
+        name: Setup .NET
+        with:
+          dotnet-version: "6.0.x"
+          include-prerelease: true
+
+      - run: dotnet tool update -g Amazon.Lambda.Tools
+        name: "Install lambda dotnet tools"
+
+      - run: |
+          dotnet lambda package \
+            --project-location "./ImageProcessingApp/AvatarResize/SimpleApp.AvatarResize" \
+            --configuration Release \
+            --output-package "./${{ env.FUNCTION_ZIP_FILE_NAME }}"
+
+      - run: aws s3 cp "./${{ env.FUNCTION_ZIP_FILE_NAME }}" s3://${{ env.S3_LAMBDA_SOURCECODE_BUCKET }}/${{ env.S3_LAMBDA_OBJECT_KEY }}
+
+  deploy-image-upload:
+    runs-on: ubuntu-latest
+    needs: [ build-docker-image, upload-lambda-zip ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - uses: aws-actions/configure-aws-credentials@v1
+        name: Configure AWS
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup SAM
+        uses: aws-actions/setup-sam@v1
+
+      - name: "Deploy simpleapp-me stack"
+        run: |
+          sam deploy --stack-name simpleapp-me \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --template-file "./cf-templates/simpleapp-me.yaml" \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides LambdaSourceCodeBucketName=${{ env.S3_LAMBDA_SOURCECODE_BUCKET }} \
+                LambdaSourceCodeKey=${{ env.S3_LAMBDA_OBJECT_KEY }}
+
+      - name: "Deploy api gateway stage prod"
+        env:
+          API_GATEWAY_ID: $(aws cloudformation describe-stacks --stack-name simpleapp-me --query 'Stacks[?StackName==`simpleapp-me`][].Outputs[?OutputKey==`SimpleAppApiGatewayId`].OutputValue' --output text)
+        run: |
+          aws apigateway create-deployment --rest-api-id ${{ env.API_GATEWAY_ID }} --stage-name "prod"
+          

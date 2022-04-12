@@ -1,0 +1,281 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Setup network for SimpleApp"
+
+Parameters:
+  VpcName:
+    Type: "String"
+    Default: "simpleapp-vpc"
+  VpcCidr:
+    Type: "String"
+    Default: "192.168.0.0/16"
+  PrivateSubnetAName:
+    Type: "String"
+    Default: "simpleapp-private-subnet-a"
+  PrivateSubnetBName:
+    Type: "String"
+    Default: "simpleapp-private-subnet-b"
+  PrivateSubnetCName:
+    Type: "String"
+    Default: "simpleapp-private-subnet-c"
+  PublicSubnetAName:
+    Type: "String"
+    Default: "simpleapp-public-subnet-a"
+  PublicSubnetBName:
+    Type: "String"
+    Default: "simpleapp-public-subnet-b"
+  PublicSubnetCName:
+    Type: "String"
+    Default: "simpleapp-public-subnet-c"
+  EipName:
+    Type: "String"
+    Default: "simpleapp-eip"
+  NatName:
+    Type: "String"
+    Default: "simpleapp-nat"
+  PrivateRouteTableName:
+    Type: "String"
+    Default: "simpleapp-private-route-table"
+  PublicGatewayName:
+    Type: "String"
+    Default: "simpleapp-public-gateway"
+  PublicRouteTableName:
+    Type: "String"
+    Default: "simpleapp-public-route-table"
+  PrivateSubnetACidr:
+    Type: "String"
+    Default: "192.168.0.0/24"
+  PrivateSubnetBCidr:
+    Type: "String"
+    Default: "192.168.1.0/24"
+  PrivateSubnetCCidr:
+    Type: "String"
+    Default: "192.168.2.0/24"
+  PublicSubnetACidr:
+    Type: "String"
+    Default: "192.168.3.0/24"
+  PublicSubnetBCidr:
+    Type: "String"
+    Default: "192.168.4.0/24"
+  PublicSubnetCCidr:
+    Type: "String"
+    Default: "192.168.5.0/24"
+
+Resources:
+  SimpleAppVpc:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: "Name"
+          Value: !Ref VpcName
+
+  PrivateSubnetA:
+    Type: "AWS::EC2::Subnet"
+    DependsOn:
+      - SimpleAppVpc
+    Properties:
+      VpcId: !Ref SimpleAppVpc
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref "AWS::Region"
+      CidrBlock: !Ref PrivateSubnetACidr
+      Tags:
+        - Key: "Name"
+          Value: !Ref PrivateSubnetAName
+
+  PrivateSubnetB:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref SimpleAppVpc
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref "AWS::Region"
+      CidrBlock: !Ref PrivateSubnetBCidr
+      Tags:
+        - Key: "Name"
+          Value: !Ref PrivateSubnetBName
+
+  PrivateSubnetC:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref SimpleAppVpc
+      AvailabilityZone: !Select
+        - 2
+        - Fn::GetAZs: !Ref "AWS::Region"
+      CidrBlock: !Ref PrivateSubnetCCidr
+      Tags:
+        - Key: "Name"
+          Value: !Ref PrivateSubnetCName
+
+  PublicSubnetA:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref SimpleAppVpc
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref "AWS::Region"
+      CidrBlock: !Ref PublicSubnetACidr
+      Tags:
+        - Key: "Name"
+          Value: !Ref PublicSubnetAName
+
+  PublicSubnetB:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref SimpleAppVpc
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref "AWS::Region"
+      CidrBlock: !Ref PublicSubnetBCidr
+      Tags:
+        - Key: "Name"
+          Value: !Ref PublicSubnetBName
+
+  PublicSubnetC:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref SimpleAppVpc
+      AvailabilityZone: !Select
+        - 2
+        - Fn::GetAZs: !Ref "AWS::Region"
+      CidrBlock: !Ref PublicSubnetCCidr
+      Tags:
+        - Key: "Name"
+          Value: !Ref PublicSubnetCName
+
+  NatEip:
+    Type: "AWS::EC2::EIP"
+    Properties:
+      Tags:
+        - Key: "Name"
+          Value: !Ref EipName
+
+  SimpleAppNat:
+    Type: "AWS::EC2::NatGateway"
+    Properties:
+      AllocationId: !GetAtt NatEip.AllocationId
+      ConnectivityType: "public"
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+        - Key: "Name"
+          Value: !Ref NatName
+
+  PrivateRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref SimpleAppVpc
+      Tags:
+        - Key: "Name"
+          Value: !Ref PrivateRouteTableName
+
+  NatRoute:
+    Type: "AWS::EC2::Route"
+    Properties:
+      DestinationCidrBlock: "0.0.0.0/0"
+      NatGatewayId: !Ref SimpleAppNat
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetARouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetA
+
+  PrivateSubnetBRouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetB
+
+  PrivateSubnetCRouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      SubnetId: !Ref PrivateSubnetC
+
+  PublicGateway:
+    Type: "AWS::EC2::InternetGateway"
+    Properties:
+      Tags:
+        - Key: "Name"
+          Value: !Ref PublicGatewayName
+
+  VpcPublicGatewayAttachment:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      InternetGatewayId: !Ref PublicGateway
+      VpcId: !Ref SimpleAppVpc
+
+  PublicRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref SimpleAppVpc
+      Tags:
+        - Key: "Name"
+          Value: !Ref PublicRouteTableName
+
+  PublicGatewayRoute:
+    Type: "AWS::EC2::Route"
+    Properties:
+      DestinationCidrBlock: "0.0.0.0/0"
+      RouteTableId: !Ref PublicRouteTable
+      GatewayId: !Ref PublicGateway
+
+  PublicRouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetA
+
+  PublicRouteTableAssociationB:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetB
+
+  PublicRouteTableAssociationC:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetC
+
+Outputs:
+  VpcId:
+    Value: !Ref SimpleAppVpc
+    Export:
+      Name: !Sub "${AWS::StackName}-VpcId"
+
+  PrivateSubnetAId:
+    Value: !Ref PrivateSubnetA
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetAId"
+
+  PrivateSubnetBId:
+    Value: !Ref PrivateSubnetB
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetBId"
+
+  PrivateSubnetCId:
+    Value: !Ref PrivateSubnetC
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnetCId"
+
+  PublicSubnetAId:
+    Value: !Ref PublicSubnetA
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnetAId"
+
+  PublicSubnetBId:
+    Value: !Ref PublicSubnetB
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnetBId"
+
+  PublicSubnetCId:
+    Value: !Ref PublicSubnetC
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnetCId"
+
+
+

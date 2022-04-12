@@ -1,0 +1,598 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "SimpleApp Image Processing"
+
+Parameters:
+  IdentityStackName:
+    Type: "String"
+    Default: "simpleapp-identity"
+  StorageStackName:
+    Type: "String"
+    Default: "simpleapp-storage"
+  NetworkStackName:
+    Type: "String"
+    Default: "simpleapp-network"
+  AvatarTempObjectPrefix:
+    Type: "String"
+    Default: "tmp/user-avatar/"
+  AvatarObjectPrefix:
+    Type: "String"
+    Default: "user-avatar/"
+  SimpleAppMeContainerName:
+    Type: "String"
+    Default: "ImageApp"
+  SimpleAppMeContainerPort:
+    Type: "Number"
+    Default: 80
+  SimpleAppMeContainerLogGroupRetentionDays:
+    Type: "Number"
+    Default: 14
+  SimpleAppMeTaskCpu:
+    Type: "String"
+    Default: "512"
+  SimpleAppMeTaskMemory:
+    Type: "String"
+    Default: "1024"
+  ContainerScalingMaxCap:
+    Type: "Number"
+    Default: 4
+  ContainerScalingMinCap:
+    Type: "Number"
+    Default: 2
+  TaskVersion:
+    Type: "String"
+    Default: "2"
+  LambdaSourceCodeBucketName:
+    Type: "String"
+    Default: "simpleapp-contents"
+  LambdaSourceCodeKey:
+    Type: "String"
+  LambdaAliasVersion:
+    Type: "String"
+    Default: "live"
+
+Resources:
+
+  SimpleAppMeExecutionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "ecs-tasks.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Description: "Allow ecs task execute image and other jobs"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+
+  SimpleAppMeExecutionPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: "ImageAppExecutionPolicy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "AllowPushLog"
+            Effect: "Allow"
+            Resource: "*"
+            Action:
+              - "logs:CreateLogGroup"
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+              - "logs:DescribeLogStreams"
+      Roles:
+        - !Ref SimpleAppMeExecutionRole
+
+  SimpleAppMeContainerRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "ecs-tasks.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Description: "Allow ecs container permission to access aws resources"
+
+  SimpleAppMeContainerPolicy:
+    DependsOn:
+      - SimpleAppMeContainerRole
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: "ImageAppContainerPolicy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: "AllowAccessSpecificS3Bucket"
+            Effect: "Allow"
+            Resource:
+              - Fn::Join:
+                  - ""
+                  - - "arn:aws:s3:::"
+                    - Fn::ImportValue: !Sub "${StorageStackName}-BucketName"
+                    - "/*"
+            Action:
+              - "s3:GetObject"
+              - "s3:GetObjectAcl"
+              - "s3:GetObjectAttributes"
+              - "s3:GetObjectLegalHold"
+              - "s3:GetObjectRetention"
+              - "s3:GetObjectTagging"
+              - "s3:GetObjectTorrent"
+              - "s3:GetObjectVersion"
+              - "s3:GetObjectVersionAcl"
+              - "s3:GetObjectVersionAttributes"
+              - "s3:GetObjectVersionForReplication"
+              - "s3:GetObjectVersionTagging"
+              - "s3:GetObjectVersionTorrent"
+              - "s3:ListBucket"
+              - "s3:PutObject"
+              - "s3:PutObjectAcl"
+              - "s3:PutObjectLegalHold"
+              - "s3:PutObjectRetention"
+              - "s3:PutObjectTagging"
+              - "s3:PutObjectVersionAcl"
+              - "s3:PutObjectVersionTagging"
+          - Sid: "AllowAccessSpecificDynamoDBTable"
+            Effect: "Allow"
+            Resource:
+              - Fn::Join:
+                  - ""
+                  - - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::Id}:table/"
+                    - Fn::ImportValue: !Sub "${StorageStackName}-SimpleAppMeTableName"
+            Action:
+              - "dynamodb:BatchGetItem"
+              - "dynamodb:BatchWriteItem"
+              - "dynamodb:DeleteItem"
+              - "dynamodb:DescribeTable"
+              - "dynamodb:GetItem"
+              - "dynamodb:ListTables"
+              - "dynamodb:PutItem"
+              - "dynamodb:Query"
+              - "dynamodb:UpdateItem"
+          - Sid: "AllowPutLogs"
+            Effect: "Allow"
+            Resource: "*"
+            Action:
+              - "logs:CreateLogGroup"
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+              - "logs:DescribeLogStreams"
+      Roles:
+        - !Ref SimpleAppMeContainerRole
+
+  SimpleAppMeAlbSG:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VpcId"
+      GroupDescription: "Allow access load balancer"
+      SecurityGroupIngress:
+        - CidrIp: "0.0.0.0/0"
+          FromPort: 80
+          ToPort: 80
+          IpProtocol: "-1"
+
+  SimpleAppMeAlb:
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+      Scheme: "internal"
+      SecurityGroups:
+        - !GetAtt SimpleAppMeAlbSG.GroupId
+      Subnets:
+        - Fn::ImportValue: !Sub "${NetworkStackName}-PrivateSubnetAId"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-PrivateSubnetBId"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-PrivateSubnetCId"
+      Type: "application"
+      Tags:
+        - Key: "Name"
+          Value: "simpleapp-me-alb"
+
+  SimpleAppMeAlbTG:
+    Type: "AWS::ElasticLoadBalancingV2::TargetGroup"
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: "/health"
+      HealthCheckPort: !Ref SimpleAppMeContainerPort
+      Port: !Ref SimpleAppMeContainerPort
+      Protocol: "HTTP"
+      TargetType: "ip"
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VpcId"
+      Tags:
+        - Key: "Name"
+          Value: "simpleapp-me-alb-target-group"
+
+  SimpleAppMeAlbListener:
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref SimpleAppMeAlbTG
+          Type: "forward"
+      LoadBalancerArn: !Ref SimpleAppMeAlb
+      Protocol: "HTTP"
+      Port: 80
+
+  SimpleAppMeContainerLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: "/aws/ecs/SimpleAppMe"
+      RetentionInDays: !Ref SimpleAppMeContainerLogGroupRetentionDays
+
+  SimpleAppMeTask:
+    DependsOn:
+      - SimpleAppMeContainerRole
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      ContainerDefinitions:
+        - Environment:
+            - Name: "ASPNETCORE_ENVIRONMENT"
+              Value: "Production"
+            - Name: "ImageConfiguration__AvatarImagePathPrefix"
+              Value: !Ref AvatarTempObjectPrefix
+              #- Name: "ImageConfiguration__S3CustomEndpoint"
+              # Value: ""
+              #Fn::ImportValue: !Sub "${StorageStackName}-BucketUrl"
+            - Name: "ImageConfiguration__S3BucketName"
+              Value:
+                Fn::ImportValue: !Sub "${StorageStackName}-BucketName"
+            - Name: "ImageConfiguration__ImageTableName"
+              Value:
+                Fn::ImportValue: !Sub "${StorageStackName}-SimpleAppMeTableName"
+            - Name: "Jwt__Issuer"
+              Value:
+                Fn::ImportValue: !Sub "${IdentityStackName}-UserPoolUrl"
+            - Name: "Jwt__KeySetUrl"
+              Value:
+                Fn::Join:
+                  - ""
+                  - - Fn::ImportValue: !Sub "${IdentityStackName}-UserPoolUrl"
+                    - "/.well-known/jwks.json"
+          Image:
+            Fn::Join:
+              - ''
+              - - !Sub "${AWS::Id}.dkr.ecr.${AWS::Region}.amazonaws.com/"
+                - Fn::ImportValue: !Sub "${StorageStackName}-SimpleAppMeRepositoryName"
+                - ":latest"
+          Name: !Ref SimpleAppMeContainerName
+          LogConfiguration:
+            LogDriver: "awslogs"
+            Options:
+              "awslogs-group": !Ref SimpleAppMeContainerLogGroup
+              "awslogs-region": !Ref "AWS::Region"
+              "awslogs-create-group": "true"
+              "awslogs-stream-prefix": "ecs"
+          PortMappings:
+            - ContainerPort: !Ref SimpleAppMeContainerPort
+              HostPort: !Ref SimpleAppMeContainerPort
+      Cpu: !Ref SimpleAppMeTaskCpu
+      Memory: !Ref SimpleAppMeTaskMemory
+      NetworkMode: "awsvpc"
+      ExecutionRoleArn: !Ref SimpleAppMeExecutionRole
+      TaskRoleArn: !Ref SimpleAppMeContainerRole
+      RequiresCompatibilities:
+        - "FARGATE"
+      Family: "11"
+
+  SimpleAppMeCluster:
+    Type: "AWS::ECS::Cluster"
+    Properties:
+      ClusterName: "simpleapp-me-cluster"
+
+  SimpleAppMeContainerSG:
+    DependsOn:
+      - SimpleAppMeAlbSG
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VpcId"
+      GroupDescription: "Allow load balancer access ecs container"
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: !Ref SimpleAppMeContainerPort
+          ToPort: !Ref SimpleAppMeContainerPort
+          SourceSecurityGroupId: !Ref SimpleAppMeAlbSG
+
+  SimpleAppMeService:
+    DependsOn:
+      - SimpleAppMeAlbTG
+      - SimpleAppMeAlbListener
+      - SimpleAppMeTask
+      - SimpleAppMeContainerSG
+    Type: "AWS::ECS::Service"
+    Properties:
+      Cluster: !Ref SimpleAppMeCluster
+      DeploymentConfiguration:
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+        MaximumPercent: 200
+      DeploymentController:
+        Type: "ECS"
+      DesiredCount: 2
+      LaunchType: "FARGATE"
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: "DISABLED"
+          Subnets:
+            - Fn::ImportValue: !Sub "${NetworkStackName}-PrivateSubnetAId"
+            - Fn::ImportValue: !Sub "${NetworkStackName}-PrivateSubnetBId"
+            - Fn::ImportValue: !Sub "${NetworkStackName}-PrivateSubnetCId"
+          SecurityGroups:
+            - !Ref SimpleAppMeContainerSG
+      TaskDefinition: !Ref SimpleAppMeTask
+      LoadBalancers:
+        - ContainerName: !Ref SimpleAppMeContainerName
+          ContainerPort: !Ref SimpleAppMeContainerPort
+          TargetGroupArn: !Ref SimpleAppMeAlbTG
+
+  SimpleAppMeAutoScalingRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "ecs-tasks.amazonaws.com"
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole'
+
+  SimpleAppMeAutoScaling:
+    DependsOn:
+      - SimpleAppMeAutoScalingRole
+    Type: "AWS::ApplicationAutoScaling::ScalableTarget"
+    Properties:
+      MaxCapacity: !Ref ContainerScalingMaxCap
+      MinCapacity: !Ref ContainerScalingMinCap
+      ResourceId:
+        Fn::Join:
+          - "/"
+          - - "service"
+            - !Ref SimpleAppMeCluster
+            - !GetAtt SimpleAppMeService.Name
+      ServiceNamespace: "ecs"
+      ScalableDimension: "ecs:service:DesiredCount"
+      RoleARN: !GetAtt SimpleAppMeAutoScalingRole.Arn
+
+  SimpleAppMeAutoScalingPolicy:
+    Type: "AWS::ApplicationAutoScaling::ScalingPolicy"
+    Properties:
+      PolicyName: "simpleapp-me-autoscaling-policy"
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref SimpleAppMeAutoScaling
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: "ECSServiceAverageCPUUtilization"
+        ScaleInCooldown: 10
+        ScaleOutCooldown: 10
+        TargetValue: 60
+
+  #  ImageAppApiGateway:
+  #    Type: "AWS::ApiGatewayV2::Api"
+  #    Properties:
+  #      Name: "SimpleApp-image-rest"
+  #      ProtocolType: "HTTP"
+  #      Version: "v1"
+  #      DisableExecuteApiEndpoint: true
+
+  SimpleAppMeNlb:
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+      Name: "simpleapp-me-network-lb"
+      Scheme: "internal"
+      Type: "network"
+      Subnets:
+        - Fn::ImportValue: !Sub "${NetworkStackName}-PrivateSubnetAId"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-PrivateSubnetBId"
+        - Fn::ImportValue: !Sub "${NetworkStackName}-PrivateSubnetCId"
+
+  SimpleAppMeNlbTG:
+    DependsOn:
+      - SimpleAppMeAlb
+      - SimpleAppMeAlbListener
+    Type: "AWS::ElasticLoadBalancingV2::TargetGroup"
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: "/health"
+      HealthCheckPort: 80
+      HealthCheckProtocol: "HTTP"
+      Port: 80
+      Protocol: "TCP"
+      TargetType: "alb"
+      Targets:
+        - Id: !Ref SimpleAppMeAlb
+          Port: 80
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VpcId"
+
+  SimpleAppMeNlbListener:
+    DependsOn:
+      - SimpleAppMeNlbTG
+    Type: "AWS::ElasticLoadBalancingV2::Listener"
+    Properties:
+      LoadBalancerArn: !Ref SimpleAppMeNlb
+      Port: 80
+      Protocol: "TCP"
+      DefaultActions:
+        - TargetGroupArn: !Ref SimpleAppMeNlbTG
+          Type: "forward"
+
+  SimpleAppApiGateway:
+    Type: "AWS::ApiGateway::RestApi"
+    Properties:
+      Name: "simpleapp-rest"
+      DisableExecuteApiEndpoint: true
+      BinaryMediaTypes:
+        - "*~1*"
+
+  SimpleAppVpcLink:
+    Type: "AWS::ApiGateway::VpcLink"
+    Properties:
+      Name: "simpleapp-vpc-link"
+      TargetArns:
+        - !Ref SimpleAppMeNlb
+
+  V1Resource:
+    Type: "AWS::ApiGateway::Resource"
+    Properties:
+      RestApiId: !Ref SimpleAppApiGateway
+      ParentId: !GetAtt SimpleAppApiGateway.RootResourceId
+      PathPart: "v1.0"
+
+  V1MeResource:
+    Type: "AWS::ApiGateway::Resource"
+    Properties:
+      RestApiId: !Ref SimpleAppApiGateway
+      ParentId: !GetAtt V1Resource.ResourceId
+      PathPart: "me"
+
+  V1MeProxyResource:
+    Type: "AWS::ApiGateway::Resource"
+    Properties:
+      RestApiId: !Ref SimpleAppApiGateway
+      ParentId: !GetAtt V1MeResource.ResourceId
+      PathPart: "{proxy+}"
+
+  V1MeProxyMethod:
+    Type: "AWS::ApiGateway::Method"
+    Properties:
+      RestApiId: !Ref SimpleAppApiGateway
+      HttpMethod: "ANY"
+      ResourceId: !GetAtt V1MeProxyResource.ResourceId
+      RequestParameters:
+        method.request.path.proxy: true
+      Integration:
+        ConnectionId: !Ref SimpleAppVpcLink
+        ConnectionType: "VPC_LINK"
+        IntegrationHttpMethod: "ANY"
+        Type: "HTTP_PROXY"
+        RequestParameters:
+          integration.request.path.proxy: "method.request.path.proxy"
+        Uri:
+          Fn::Join:
+            - ""
+            - - "http://"
+              - !GetAtt SimpleAppMeNlb.DNSName
+              - "/v1.0/me/{proxy}"
+      AuthorizationType: "NONE"
+
+  SimpleAppResizeAvatarFunctionRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+
+  SimpleAppResizeAvatarPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties:
+      PolicyName: "SimpleAppResizeAvatarPolicy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action:
+              - "logs:PutRetentionPolicy"
+              - "logs:DeleteRetentionPolicy"
+              - "logs:CreateLogGroup"
+              - "logs:PutLogEvents"
+              - "logs:CreateLogStream"
+            Resource: "*"
+          - Effect: "Allow"
+            Action:
+              - "s3:GetObject*"
+              - "s3:PutObject*"
+            Resource: "*"
+          - Effect: "Allow"
+            Resource:
+              - Fn::Join:
+                  - ""
+                  - - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::Id}:table/"
+                    - Fn::ImportValue: !Sub "${StorageStackName}-SimpleAppMeTableName"
+            Action:
+              - "dynamodb:BatchGetItem"
+              - "dynamodb:BatchWriteItem"
+              - "dynamodb:DeleteItem"
+              - "dynamodb:DescribeTable"
+              - "dynamodb:GetItem"
+              - "dynamodb:ListTables"
+              - "dynamodb:PutItem"
+              - "dynamodb:Query"
+              - "dynamodb:UpdateItem"
+          - Effect: Allow
+            Action:
+              - "sqs:ReceiveMessage"
+              - "sqs:DeleteMessage"
+              - "sqs:GetQueueAttributes"
+              - "sqs:ChangeMessageVisibility"
+            Resource:
+              Fn::ImportValue: !Sub "${StorageStackName}-SimpleAppUploadedUserAvatarQueueArn"
+      Roles:
+        - !Ref SimpleAppResizeAvatarFunctionRole
+
+  SimpleAppResizeAvatarFunction:
+    DependsOn:
+      - SimpleAppResizeAvatarFunctionRole
+    Type: "AWS::Serverless::Function"
+    Properties:
+      Handler: "SimpleApp.AvatarResize::SimpleApp.AvatarResize.Function::ResizeImageFromS3"
+      Architectures:
+        - x86_64
+      CodeUri:
+        Bucket: !Ref LambdaSourceCodeBucketName
+        Key: !Ref LambdaSourceCodeKey
+      AutoPublishAlias: !Ref LambdaAliasVersion
+      MemorySize: 512
+      Runtime: "dotnet6"
+      Role: !GetAtt SimpleAppResizeAvatarFunctionRole.Arn
+      Timeout: 450
+      Environment:
+        Variables:
+          AVATAR_TABLE_NAME:
+            Fn::ImportValue: !Sub "${StorageStackName}-SimpleAppMeTableName"
+          OBJECT_PREFIX: !Ref AvatarObjectPrefix
+
+  SimpleAppResizeAvatarFunctionLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Join [ "", [ "/aws/lambda/", !Ref SimpleAppResizeAvatarFunction ] ]
+      RetentionInDays: 14
+
+  SimpleAppResizeAvatarFunctionEventMapping:
+    Type: "AWS::Lambda::EventSourceMapping"
+    Properties:
+      BatchSize: 10
+      Enabled: true
+      EventSourceArn:
+        Fn::ImportValue: !Sub "${StorageStackName}-SimpleAppUploadedUserAvatarQueueArn"
+      FunctionName: !Ref SimpleAppResizeAvatarFunction.Alias
+      FunctionResponseTypes:
+        - "ReportBatchItemFailures"
+
+Outputs:
+  SimpleAppApiGatewayId:
+    Value: !Ref SimpleAppApiGateway
+    Export:
+      Name: !Sub "${AWS::StackName}-SimpleAppApiGatewayId"
+
+
+
+
+
+
+
+
+
