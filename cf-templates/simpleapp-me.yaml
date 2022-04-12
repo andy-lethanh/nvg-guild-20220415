@@ -143,7 +143,7 @@ Resources:
             Resource:
               - Fn::Join:
                   - ""
-                  - - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::Id}:table/"
+                  - - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/"
                     - Fn::ImportValue: !Sub "${StorageStackName}-SimpleAppMeTableName"
             Action:
               - "dynamodb:BatchGetItem"
@@ -257,7 +257,7 @@ Resources:
           Image:
             Fn::Join:
               - ''
-              - - !Sub "${AWS::Id}.dkr.ecr.${AWS::Region}.amazonaws.com/"
+              - - !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/"
                 - Fn::ImportValue: !Sub "${StorageStackName}-SimpleAppMeRepositoryName"
                 - ":latest"
           Name: !Ref SimpleAppMeContainerName
@@ -520,7 +520,7 @@ Resources:
             Resource:
               - Fn::Join:
                   - ""
-                  - - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::Id}:table/"
+                  - - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/"
                     - Fn::ImportValue: !Sub "${StorageStackName}-SimpleAppMeTableName"
             Action:
               - "dynamodb:BatchGetItem"
