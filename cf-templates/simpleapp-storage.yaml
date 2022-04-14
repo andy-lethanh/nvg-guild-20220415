@@ -81,7 +81,7 @@ Resources:
       LifecycleConfiguration:
         Rules:
           - ExpirationInDays: 2
-            Prefix: AvatarTempObjectPrefix
+            Prefix: !Ref AvatarTempObjectPrefix
             Status: "Enabled"
 
       BucketEncryption:
