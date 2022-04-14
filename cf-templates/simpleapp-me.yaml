@@ -431,7 +431,7 @@ Resources:
       Name: "simpleapp-rest"
       DisableExecuteApiEndpoint: true
       BinaryMediaTypes:
-        - "*~1*"
+        - "*/*"
 
   SimpleAppVpcLink:
     Type: "AWS::ApiGateway::VpcLink"
